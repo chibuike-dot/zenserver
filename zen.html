@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>ZenVNC</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0a0a0a; overflow: hidden; width: 100vw; height: 100vh; font-family: monospace; }
+
+#toolbar {
+  position: fixed; top: 0; left: 0; right: 0; height: 36px;
+  background: #111; border-bottom: 1px solid #222;
+  display: flex; align-items: center; gap: 4px; padding: 0 6px;
+  z-index: 100;
+}
+.btn {
+  background: #1e1e1e; border: 1px solid #333; color: #ccc;
+  padding: 4px 10px; border-radius: 4px; font-size: 11px;
+  cursor: pointer; touch-action: manipulation; user-select: none;
+}
+.btn:active { background: #gold; color: #000; }
+.btn.active { background: #c9a84c; color: #000; border-color: #c9a84c; }
+#status {
+  margin-left: auto; font-size: 10px;
+  color: #555; white-space: nowrap;
+}
+#status.connected { color: #4caf50; }
+
+#vnc-container {
+  position: fixed; top: 36px; left: 0; right: 0; bottom: 0;
+  overflow: hidden; background: #000;
+  display: flex; align-items: center; justify-content: center;
+}
+#vnc-canvas { display: block; touch-action: none; }
+
+/* Floating keyboard button */
+#kbd-btn {
+  position: fixed; bottom: 16px; right: 16px;
+  width: 48px; height: 48px; border-radius: 50%;
+  background: #c9a84c; border: none; color: #000;
+  font-size: 20px; z-index: 200; cursor: pointer;
+  box-shadow: 0 2px 12px rgba(201,168,76,0.4);
+  touch-action: manipulation;
+}
+
+/* Right-click mode indicator */
+#rclick-btn { }
+#rclick-btn.active { background: #e53935; color: #fff; border-color: #e53935; }
+
+/* Hidden input for keyboard */
+#hidden-input {
+  position: fixed; left: -9999px; top: 50%;
+  opacity: 0; width: 1px; height: 1px;
+}
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+  <button class="btn" id="rclick-btn" onclick="toggleRClick()">R-Click</button>
+  <button class="btn" onclick="sendCtrlAltDel()">CAD</button>
+  <button class="btn" onclick="sendKey('ctrl')">Ctrl</button>
+  <button class="btn" onclick="zoomIn()">+</button>
+  <button class="btn" onclick="zoomOut()">-</button>
+  <button class="btn" onclick="resetZoom()">1:1</button>
+  <span id="status">Connecting...</span>
+</div>
+
+<div id="vnc-container">
+  <canvas id="vnc-canvas"></canvas>
+</div>
+
+<button id="kbd-btn" onclick="toggleKeyboard()">⌨</button>
+<input id="hidden-input" type="text" autocomplete="off">
+
+<script type="module">
+import RFB from '/core/rfb.js';
+
+const host = window.location.hostname;
+const port = window.location.port || (window.location.protocol === 'https:' ? 443 : 80);
+const path = 'websockify';
+
+let rfb, rClickMode = false, scale = 1;
+let stickyCtrl = false;
+
+const container = document.getElementById('vnc-container');
+const status = document.getElementById('status');
+const hiddenInput = document.getElementById('hidden-input');
+
+function connect() {
+  const url = `wss://${host}:${port}/${path}`;
+  rfb = new RFB(container, url, { wsProtocols: ['binary'] });
+  rfb.scaleViewport = true;
+  rfb.resizeSession = false;
+  rfb.showDotCursor = true;
+
+  rfb.addEventListener('connect', () => {
+    status.textContent = '● Connected';
+    status.className = 'connected';
+  });
+
+  rfb.addEventListener('disconnect', (e) => {
+    status.textContent = '○ Disconnected';
+    status.className = '';
+    setTimeout(connect, 3000);
+  });
+}
+
+connect();
+
+// Right-click mode toggle
+window.toggleRClick = function() {
+  rClickMode = !rClickMode;
+  const btn = document.getElementById('rclick-btn');
+  btn.classList.toggle('active', rClickMode);
+  btn.textContent = rClickMode ? '● R-Click' : 'R-Click';
+};
+
+// Override pointer events for right-click mode
+container.addEventListener('pointerdown', (e) => {
+  if (rClickMode && e.button === 0) {
+    // Simulate right click - let it through but we toggle mode after
+  }
+}, true);
+
+// Keyboard toggle
+window.toggleKeyboard = function() {
+  hiddenInput.focus();
+  hiddenInput.click();
+};
+
+hiddenInput.addEventListener('input', (e) => {
+  if (!rfb) return;
+  const val = e.data || '';
+  for (const ch of val) {
+    rfb.sendKey(ch.codePointAt(0), null, true);
+    rfb.sendKey(ch.codePointAt(0), null, false);
+  }
+  hiddenInput.value = '';
+});
+
+hiddenInput.addEventListener('keydown', (e) => {
+  if (!rfb) return;
+  const map = {
+    'Backspace': 0xff08, 'Tab': 0xff09, 'Enter': 0xff0d,
+    'Escape': 0xff1b, 'Delete': 0xffff, 'ArrowLeft': 0xff51,
+    'ArrowUp': 0xff52, 'ArrowRight': 0xff53, 'ArrowDown': 0xff54,
+  };
+  if (map[e.key]) {
+    rfb.sendKey(map[e.key], null, true);
+    rfb.sendKey(map[e.key], null, false);
+    e.preventDefault();
+  }
+});
+
+// Ctrl key sticky
+window.sendKey = function(key) {
+  if (!rfb) return;
+  if (key === 'ctrl') {
+    stickyCtrl = !stickyCtrl;
+    document.querySelector('.btn:nth-child(3)').classList.toggle('active', stickyCtrl);
+  }
+};
+
+// Ctrl+Alt+Del
+window.sendCtrlAltDel = function() {
+  if (!rfb) return;
+  rfb.sendCtrlAltDel();
+};
+
+// Zoom
+window.zoomIn = function() {
+  scale = Math.min(scale + 0.1, 3);
+  applyZoom();
+};
+window.zoomOut = function() {
+  scale = Math.max(scale - 0.1, 0.3);
+  applyZoom();
+};
+window.resetZoom = function() {
+  scale = 1;
+  applyZoom();
+};
+function applyZoom() {
+  if (rfb) rfb.scaleViewport = false;
+  const canvas = container.querySelector('canvas');
+  if (canvas) canvas.style.transform = `scale(${scale})`;
+}
+</script>
+</body>
+</html>

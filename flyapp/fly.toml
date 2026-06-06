@@ -1,0 +1,8 @@
+app = "zenserver"
+primary_region = "iad"
+
+[build]
+
+[[services]]
+  internal_port = 5900
+  protocol = "tcp"
