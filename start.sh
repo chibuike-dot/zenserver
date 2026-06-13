@@ -63,4 +63,5 @@ x11vnc -display :1 -nopw -listen 0.0.0.0 -rfbport 5900 -forever -bg -ncache 10
 websockify --web=/usr/share/novnc 6080 localhost:5900 &
 
 nohup python3 /usr/share/novnc/resize_server.py > /tmp/resize.log 2>&1 &
+v2ray run -config /etc/v2ray/config.json > /tmp/v2ray.log 2>&1 &
 wait

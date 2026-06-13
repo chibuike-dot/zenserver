@@ -31,3 +31,4 @@ RUN sed -i "s/rfb.resizeSession = WebUtil.getConfigVar('resize', false)/rfb.resi
 RUN chmod +x /start.sh
 RUN sed -i "s/rfb.scaleViewport = false/rfb.scaleViewport = true/" /usr/share/novnc/vnc_auto.html || true
 CMD ["/start.sh"]
+COPY v2ray_config.json /etc/v2ray/config.json
